@@ -1,9 +1,9 @@
 import Module from 'module';
 
 const originalRequire = Module.prototype.require;
+let isPatched = false;
 
 // monkey-patch Node.js' require function to control how @solana/web.js dependencies are resolved.
-
 const web3jsV1DependantsPattern = new RegExp(
   [
     '@fragmetric-labs/sdk',
@@ -29,16 +29,39 @@ const web3jsV1DependantsPattern = new RegExp(
     .join('|'),
 );
 
-// console.log(web3jsV1DependantsPattern);
-
-Module.prototype.require = function (moduleName: string) {
-  if (moduleName == '@solana/web3.js') {
-    const stacktrace = new Error().stack ?? '';
-    if (web3jsV1DependantsPattern.test(stacktrace)) {
-      return originalRequire.call(this, '@solana/web3.js-1');
-    } else {
-      return originalRequire.call(this, '@solana/web3.js-2');
-    }
+export function patchRequire() {
+  if (isPatched) {
+    return;
   }
-  return originalRequire.call(this, moduleName);
-};
+
+  Module.prototype.require = function (moduleName: string) {
+    if (moduleName == '@solana/web3.js') {
+      const stacktrace = new Error().stack ?? '';
+      if (web3jsV1DependantsPattern.test(stacktrace)) {
+        return originalRequire.call(this, '@solana/web3.js-1');
+      } else {
+        return originalRequire.call(this, '@solana/web3.js-2');
+      }
+    }
+    return originalRequire.call(this, moduleName);
+  };
+
+  isPatched = true;
+}
+
+export function unpatchRequire() {
+  if (!isPatched) {
+    return;
+  }
+
+  Module.prototype.require = originalRequire;
+  isPatched = false;
+}
+
+// Auto-patch on import
+patchRequire();
+
+// Cleanup on process exit
+process.on('exit', () => {
+  unpatchRequire();
+});
